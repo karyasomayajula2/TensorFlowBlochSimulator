@@ -9,35 +9,35 @@ inputData = d.data.imgCreator(0, 8, 8, 10, 25, 1);
 Nrep = inputData[0].shape[0];
 Nactions = inputData[0].shape[1];
 PDArray = inputData[0].flatten();
-PD = tf.constant(PDArray, dtype=tf.float64, shape=(64, 1));
+PD = tf.constant(PDArray, dtype=tf.complex64, shape=(64, 1));
 T1 = inputData[1];
 T2 = inputData[2];
-xVec = tf.cast(tf.linspace(1, 8, 8), tf.float64);
-yVec = tf.cast(tf.linspace(1, 8, 8), tf.float64);
-alpha = tf.Variable(tf.ones([Nrep, Nactions], tf.float64));
-deltat = tf.Variable(tf.ones([Nrep, Nactions], tf.float64));
-gradients = tf.Variable(tf.ones([Nrep, Nactions], tf.float64));
+xVec = tf.cast(tf.linspace(1, 8, 8), tf.complex64);
+yVec = tf.cast(tf.linspace(1, 8, 8), tf.complex64);
+alpha = tf.Variable(tf.ones([Nrep, Nactions], tf.complex64));
+deltat = tf.Variable(tf.ones([Nrep, Nactions], tf.complex64));
+gradients = tf.Variable(tf.ones([Nrep, Nactions], tf.complex64));
 
 #Bloch Simulator Functions
 gammaH = 42.575 * (2 * m.pi)
 
 def xrot(phi):
-    zero = tf.constant(0, dtype = tf.float64)
-    one = tf.constant(1, dtype = tf.float64)
+    zero = tf.constant(0, dtype = tf.complex64)
+    one = tf.constant(1, dtype = tf.complex64)
     a = tf.stack([one, zero, zero, zero, tf.cos(phi), -tf.sin(phi), zero, tf.sin(phi), tf.cos(phi)])
     RotX = tf.reshape(a, (3,3))
     return RotX;
 
 def yrot(phi):
-    zero = tf.constant(0, dtype=tf.float64)
-    one = tf.constant(1, dtype=tf.float64)
+    zero = tf.constant(0, dtype=tf.complex64)
+    one = tf.constant(1, dtype=tf.complex64)
     a = tf.stack([tf.cos(phi), zero, tf.sin(phi), zero, one, zero, -tf.sin(phi), zero, tf.cos(phi)]);
     RotY = tf.reshape(a, (3,3))
     return RotY;
 
 def zrot(phi):
-    zero = tf.constant(0, dtype=tf.float64)
-    one = tf.constant(1, dtype=tf.float64)
+    zero = tf.constant(0, dtype=tf.complex64)
+    one = tf.constant(1, dtype=tf.complex64)
     a = tf.stack([tf.cos(phi), -tf.sin(phi), zero, tf.sin(phi), tf.cos(phi), zero, zero, zero, one])
     Rotz = tf.reshape(a, (3,3));
     return Rotz;
@@ -51,7 +51,7 @@ def throt(phi, phase):
     return Rthrot;
 
 def relax(deltat, T1, T2):
-    zero = tf.constant(0, dtype=tf.float64)
+    zero = tf.constant(0, dtype=tf.complex64)
     exponent1 = -deltat/T2;
     exponent2 = -deltat/T1;
     a = tf.stack([tf.exp(exponent1), zero, zero, zero, tf.exp(exponent1), zero, zero, zero, tf.exp(exponent2)]);
@@ -60,7 +60,7 @@ def relax(deltat, T1, T2):
 
 def freeprecess(deltat, phase, df):  # for us relax does what freeprecess should do except the zrotation
     phi = 2 * (phase) * df * deltat / 1000;
-    p = tf.constant(phi, dtype = tf.float64);
+    print(phi);
     # E1 = np.exp(-deltat / T1);
     # E2 = np.exp(-deltat / T2);
     b = zrot(phi);
@@ -74,13 +74,13 @@ def gradprecess(m, gradient, deltat, phase, gammaH, x, y):
     comp = tf.constant([0 - 1j*gammaH], dtype=tf.complex64); # -1i
     func = tf.add(gx*x*deltat, gy*y*deltat);
     #exponential = tf.constant([func], dtype=tf.complex64, shape=(1,1));
-    f = tf.cast(func, dtype=tf.complex64);
-    z = tf.multiply(comp, f);
+    #f = tf.cast(func, dtype=tf.complex64);
+    z = tf.multiply(comp, func);
     precess = tf.exp(z);
     precessLine = tf.reshape(precess, [1,64])
-    ez = tf.constant([[0], [0], [1]], dtype = tf.float64)
+    ez = tf.constant([[0], [0], [1]], dtype = tf.complex64)
     mz = tf.matmul(m, ez)
-    mz = tf.cast(mz, tf.complex64);
+    #mz = tf.cast(mz, tf.complex64);
     msig = tf.matmul(mz, precessLine); #check matrix dimensions for this portion
     return msig;
 
@@ -91,13 +91,13 @@ def signal(m, gradients, deltat, rfPhase, gammaH, x, y):
     return s;
 
 def forward(PD, T1, T2, alpha, gradients, deltat, x, y, xVec, yVec, rfPhase=m.pi): #Pd is a tensor, T1 and T2 are scalars for that image
-    ez = tf.constant([0, 0, 1], dtype=tf.float64, shape=(1, 3))
+    ez = tf.constant([0, 0, 1], dtype=tf.complex64, shape=(1, 3))
     s = np.zeros([Nrep, Nactions], dtype=complex)
     m0 = tf.matmul(PD, ez); #if 8by8 image PD is a 64by1 matrix and m is now a 64by3: 64by1*1by3 = 64by3
     m = m0;
-    t1 = tf.constant(T1, dtype = tf.float64)
-    t2 = tf.constant(T2, dtype = tf.float64)
-    phase = tf.constant(rfPhase, dtype=tf.float64)
+    t1 = tf.constant(T1, dtype = tf.complex64)
+    t2 = tf.constant(T2, dtype = tf.complex64)
+    phase = tf.constant(rfPhase, dtype=tf.complex64)
     for r in range(0, Nrep):
         for a in range(0, Nactions):
             flip = throt(alpha[r,a], phase); #no .numpy() anywhere
@@ -117,9 +117,9 @@ def forward(PD, T1, T2, alpha, gradients, deltat, x, y, xVec, yVec, rfPhase=m.pi
 
 def reconstruction(s):
     rec = tf.signal.ifft2d(s);
-    recon = tf.math.real(rec)+tf.math.imag(rec); #use abs or real
-    recon = tf.cast(recon, tf.float64);
-    recon = tf.reshape(recon, [64,1]);
+    #recon = tf.math.real(rec)+tf.math.imag(rec); #use abs or real
+    #recon = tf.cast(recon, tf.float64);
+    recon = tf.reshape(rec, [64,1]);
     return recon;
 
 
