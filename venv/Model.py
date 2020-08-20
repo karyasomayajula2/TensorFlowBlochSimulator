@@ -77,22 +77,22 @@ def gradprecess(m, gradient, deltat, phase, gammaH, x, y):
     #f = tf.cast(func, dtype=tf.complex64);
     z = tf.multiply(comp, func);
     precess = tf.exp(z);
-    precessLine = tf.reshape(precess, [1,64])
+    precessLine = tf.reshape(precess, [64, 1])
     ez = tf.constant([[0], [0], [1]], dtype = tf.complex64)
     mz = tf.matmul(m, ez)
     #mz = tf.cast(mz, tf.complex64);
-    msig = tf.matmul(mz, precessLine); #check matrix dimensions for this portion
+    msig = tf.reshape(tf.multiply(mz, precessLine), [8,8]); #check matrix dimensions for this portion
     return msig;
 
 def signal(m, gradients, deltat, rfPhase, gammaH, x, y):
     #x[tf.newaxis, :], y[: , tf.newaxis]]
     svec = tf.reduce_sum(gradprecess(m, gradients, deltat, rfPhase, gammaH, x[tf.newaxis, :], y[: , tf.newaxis]));
-    s = tf.reduce_sum(svec);
-    return s;
+    return svec;
 
 def forward(PD, T1, T2, alpha, gradients, deltat, x, y, xVec, yVec, rfPhase=m.pi): #Pd is a tensor, T1 and T2 are scalars for that image
     ez = tf.constant([0, 0, 1], dtype=tf.complex64, shape=(1, 3))
-    s = np.zeros([Nrep, Nactions], dtype=complex)
+    #s = tf.Variable(tf.zeros([Nrep, Nactions], dtype=tf.complex64));
+    s = [];
     m0 = tf.matmul(PD, ez); #if 8by8 image PD is a 64by1 matrix and m is now a 64by3: 64by1*1by3 = 64by3
     m = m0;
     t1 = tf.constant(T1, dtype = tf.complex64)
@@ -107,8 +107,11 @@ def forward(PD, T1, T2, alpha, gradients, deltat, x, y, xVec, yVec, rfPhase=m.pi
             b = freeprecess(deltat[r,a], phase, df=10);
             m = tf.matmul(m, b); #64by3 times 3by3 = zrotated mag vectors
             #ms = gradprecess(m, gradients[r,a].numpy(), deltat[r,a].numpy(), rfPhase, gammaH, x, y) #64 by 1 vector transverse magnetiztion
-            s[r,a] = signal(m, gradients[r,a], deltat[r,a], phase, gammaH, xVec, yVec);
-    return s;
+            sIndex = signal(m, gradients[r,a], deltat[r,a], phase, gammaH, xVec, yVec);
+            s.append(sIndex);
+    X = tf.stack(s);
+    Y = tf.reshape(X, [8,8]);
+    return Y;
 
 
 
@@ -133,13 +136,23 @@ input = PD; #in the future used to make training batches
 epochs = 10;
 def train(opt, input):
     with tf.GradientTape(persistent=True) as tape:
-        vars = [alpha, gradients, deltat];
+        vars = [alpha, deltat, gradients]; #gradients, deltat];
         tape.watch(vars);
-        print(tape.watched_variables());
-        result = reconstruction(forward(input, T1, T2, alpha, gradients, deltat, Nrep, Nactions, xVec, yVec))
-        loss_fn = cost(result, input);
-        grads = tape.gradient(loss_fn, vars)
+        #print(tape.watched_variables());
+        groundTruthSigMatrix = tf.ones([8, 8], dtype=tf.complex64);
+        result = forward(input, T1, T2, alpha, gradients, deltat, Nrep, Nactions, xVec, yVec);
+        instantLoss = tf.reduce_mean(tf.square(groundTruthSigMatrix - result));
+        #loss_fn = cost(result, input);
+        #phase = tf.constant(m.pi, dtype=tf.complex64)
+        #groundTruthSignal = tf.constant([1.5], dtype=tf.complex64);
+        #ez = tf.constant([0, 0, 1], dtype=tf.complex64, shape=(1, 3))
+        #inputM = tf.matmul(input, ez);
+        #result = signal(inputM, gradients[1,1], deltat[1,1], phase, gammaH, xVec, yVec);
+        grads = tape.gradient(instantLoss, vars)
         opt.apply_gradients(zip(grads, vars))
 
 for i in range(0, epochs):
     train(opt, input);
+print(alpha)
+print(deltat)
+print(gradients)
