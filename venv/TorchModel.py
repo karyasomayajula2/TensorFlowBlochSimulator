@@ -2,6 +2,7 @@ import scipy as sp
 import numpy as np
 import data as d
 import torch
+import math
 
 # Preprocess Data
 inputData = d.data.imgCreator(0, 8, 8, 10, 25, 1);
@@ -12,11 +13,11 @@ PD = torch.as_tensor(PDArray, dtype=torch.float64);
 PD = torch.reshape(PD, shape=(64, 1));
 T1 = inputData[1];
 T2 = inputData[2];
-xVec = torch.linspace(0, 8, 9);
-yVec = torch.linspace(0, 8, 9);
-alpha = torch.autograd.Variable(torch.zeros(Nrep, Nactions))  # , torch.double));
-deltat = torch.autograd.Variable(torch.zeros(Nrep, Nactions))  # , torch.double));
-gradients = torch.autograd.Variable(torch.zeros(Nrep, Nactions))  # , torch.double));
+xVec = torch.linspace(1, 8, 8);
+yVec = torch.linspace(1, 8, 8);
+alpha = torch.autograd.Variable(torch.ones(Nrep, Nactions))  # , torch.double));
+deltat = torch.autograd.Variable(torch.rand(Nrep, Nactions))  # , torch.double));
+gradients = torch.autograd.Variable(torch.rand(Nrep, Nactions))  # , torch.double));
 
 # Bloch Simulator Functions
 gammaH = 42.575 * (2 * np.pi)
@@ -80,29 +81,33 @@ def gradprecess(m, gradient, deltat, rfPhase, gammaH, x, y):
 #    exponential = torch.reshape(exponential, shape=(1, 1))
     z = torch.mul(comp, func);
     precess = torch.exp(z);
+    precessLine = torch.reshape(precess,(64,1))
     #precess = torch.complex64(precess);
     #torch.tensor(torch.exp(torch.index_select(z, 0, 0))#, dtype=torch.complex64)
     ez = torch.tensor([[0], [0], [1]], dtype=torch.float64);
     mz = torch.matmul(m, ez);
     mz = mz.type(torch.complex64);
-    msig = torch.mm(mz, precess);  # check matrix dimensions for this portion
+    msig = torch.mul(mz, precessLine)
+    #msig = torch.mm(mz, precess);  # check matrix dimensions for this portion L1 norm
+    #mmcombined = mz.real + mz.imag;
+    #precessLinec = precessLine.real + precessLine.imag;
+    #msig = torch.mul(mmcombined, precessLinec)
     return msig;
 
 
 def signal(m, gradients, deltat, rfPhase, gammaH, x, y):
-    x = x.reshape(1, 9)
-    y = y.reshape(9, 1)
+    x = x.reshape(1, 8)
+    y = y.reshape(8, 1)
     #svec = torch.sum(m((x, y)));
     svec = torch.sum(gradprecess(m, gradients, deltat, rfPhase, gammaH, x, y));
-    s = torch.sum(svec);
-    return s;
+    return svec;
 
 
 def forward(PD, T1, T2, alpha, gradients, deltat, x, y, xVec, yVec,
-            rfPhase=torch.tensor(np.pi)):  # Pd is a tensor, T1 and T2 are scalars for that image
+            rfPhase= torch.tensor(math.pi)):  # Pd is a tensor,PD T1 and T2 are scalars for that image
     ez = torch.tensor([0, 0, 1], dtype=torch.float64)
     # print(torch.is_tensor(ez))
-    s = torch.zeros(Nrep, Nactions)  # dtype=complex)
+    s = torch.zeros(Nrep, Nactions, dtype=torch.complex64)  # dtype=complex)
     m0 = PD * ez  # torch.matmul(PD, ez); #if 8by8 image PD is a 64by1 matrix and m is now a 64by3: 64by1*1by3 = 64by3
     m = m0;
     for r in range(0, Nrep):
@@ -117,7 +122,7 @@ def forward(PD, T1, T2, alpha, gradients, deltat, x, y, xVec, yVec,
             #ms = gradprecess(m, gradients[r, a], deltat[r, a], rfPhase, gammaH, x,
                              #y)  # 64 by 1 vector transverse magnetiztion
             #s[r, a] = signal(ms, xVec, yVec);
-            s[r, a] = signal(m, gradients[r, a].numpy(), deltat[r, a], rfPhase, gammaH, xVec, yVec);
+            s[r, a] = signal(m, gradients[r, a], deltat[r, a], rfPhase, gammaH, xVec, yVec);
     return s;
 
 
@@ -125,3 +130,10 @@ def forward(PD, T1, T2, alpha, gradients, deltat, x, y, xVec, yVec,
 # print(msig)
 s = forward(PD, T1, T2, alpha, gradients, deltat, Nrep, Nactions, xVec, yVec);
 print(s);
+sreal = s.real
+simag = s.imag
+s = torch.stack([sreal, simag], 2)
+print(s)
+print(s.shape)
+fft = torch.ifft(s,2)
+print(fft);
