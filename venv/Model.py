@@ -60,7 +60,6 @@ def relax(deltat, T1, T2):
 
 def freeprecess(deltat, phase, df):  # for us relax does what freeprecess should do except the zrotation
     phi = 2 * (phase) * df * deltat / 1000;
-    print(phi);
     # E1 = np.exp(-deltat / T1);
     # E2 = np.exp(-deltat / T2);
     b = zrot(phi);
@@ -133,25 +132,30 @@ def cost(recon, PD):
 
 opt = tf.keras.optimizers.Adam(learning_rate=0.001);
 input = PD; #in the future used to make training batches
-epochs = 10;
+epochs = 1000;
+mainLoss = 100000;
 def train(opt, input):
     with tf.GradientTape(persistent=True) as tape:
         vars = [alpha, deltat, gradients]; #gradients, deltat];
         tape.watch(vars);
         #print(tape.watched_variables());
-        groundTruthSigMatrix = tf.ones([8, 8], dtype=tf.complex64);
+        #groundTruthSigMatrix = tf.ones([8, 8], dtype=tf.complex64);
         result = forward(input, T1, T2, alpha, gradients, deltat, Nrep, Nactions, xVec, yVec);
-        instantLoss = tf.reduce_mean(tf.square(groundTruthSigMatrix - result));
+        rec = reconstruction(result);
+        loss = cost(rec, input);
+        mainLoss = loss;
         #loss_fn = cost(result, input);
         #phase = tf.constant(m.pi, dtype=tf.complex64)
         #groundTruthSignal = tf.constant([1.5], dtype=tf.complex64);
         #ez = tf.constant([0, 0, 1], dtype=tf.complex64, shape=(1, 3))
         #inputM = tf.matmul(input, ez);
         #result = signal(inputM, gradients[1,1], deltat[1,1], phase, gammaH, xVec, yVec);
-        grads = tape.gradient(instantLoss, vars)
+        grads = tape.gradient(loss, vars)
         opt.apply_gradients(zip(grads, vars))
 
-for i in range(0, epochs):
+#Change to make it in loss dependent
+print(mainLoss);
+while mainLoss > 0.1:
     train(opt, input);
 print(alpha)
 print(deltat)
