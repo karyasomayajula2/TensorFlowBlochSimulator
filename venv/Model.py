@@ -3,23 +3,35 @@ import scipy as sp
 import numpy as np
 import data as d
 import math as m
+import matplotlib.pyplot as plt
 
 #Preprocess Data
-inputData = d.data.imgCreator(0, 8, 8, 10, 25, 1);
+inputData = d.data.imgCreator(0, 8, 8, 40, 50, 1);
 Nrep = inputData[0].shape[0];
 Nactions = inputData[0].shape[1];
 PDArray = inputData[0].flatten();
 PD = tf.constant(PDArray, dtype=tf.complex64, shape=(64, 1));
+PDNormalized = PD/250;
 T1 = inputData[1];
 T2 = inputData[2];
 xVec = tf.cast(tf.linspace(1, 8, 8), tf.complex64);
 yVec = tf.cast(tf.linspace(1, 8, 8), tf.complex64);
-alpha = tf.Variable(tf.ones([Nrep, Nactions], tf.complex64));
-deltat = tf.Variable(tf.ones([Nrep, Nactions], tf.complex64));
-gradients = tf.Variable(tf.ones([Nrep, Nactions], tf.complex64));
+alpha = tf.Variable(tf.zeros([Nrep, Nactions],  dtype= tf.complex64));
+deltat = tf.Variable([[1.+0.j, 10.+0.j, 5.+0.j, 2.+0.j, 3.+0.j, 0.+0.j, 2.+0.j, 5.+0.j],
+       [1.+0.j, 5.+0.j, 8.+0.j, 6.+0.j, 4.+0.j, 3.+0.j, 2.+0.j, 10.+0.j],
+       [10.+0.j, 9.+0.j, 2.+0.j, 7.+0.j, 5.+0.j, 4.+0.j, 3.+0.j, 2.+0.j],
+       [5.+0.j, 4.+0.j, 3.+0.j, 1.+0.j, 7.+0.j, 3.+0.j, 1.+0.j, 4.+0.j],
+       [2.+0.j, 7.+0.j, 3.+0.j, 1.+0.j, 5.+0.j, 1.+0.j, 6.+0.j, 4.+0.j],
+       [7.+0.j, 8.+0.j, 6.+0.j, 9.+0.j, 3.+0.j, 1.+0.j, 2.+0.j, 5.+0.j],
+       [2.+0.j, 7.+0.j, 9.+0.j, 10.+0.j, 3.+0.j, 4.+0.j, 5.+0.j, 1.+0.j],
+       [1.+0.j, 3.+0.j, 5.+0.j, 6.+0.j, 6.+0.j, 2.+0.j, 10.+0.j, 8.+0.j]], dtype = tf.complex64);
+gradientX = tf.Variable(tf.zeros([Nrep, Nactions],  dtype= tf.complex64));
+gradientY = tf.Variable(tf.zeros([Nrep, Nactions],  dtype= tf.complex64));
 
+## INCORRECT HAVE TWO GRADIENT GX AND GY
+## INITIALIZE ALPHA AND GRADIENTS TO 0
+## ? INITIALIZE DELTAT to == ? Real #'s
 #Bloch Simulator Functions
-gammaH = 42.575 * (2 * m.pi)
 
 def xrot(phi):
     zero = tf.constant(0, dtype = tf.complex64)
@@ -67,18 +79,18 @@ def freeprecess(deltat, phase, df):  # for us relax does what freeprecess should
     # Bfp = tf.constant([[0], [0], [1 - E1]], dtype=tf.float64)
     return b;
 
-def gradprecess(m, gradient, deltat, phase, gammaH, x, y):
-    gx = gradient * tf.cos(phase);
-    gy = gradient * tf.sin(phase);
-    comp = tf.constant([0 - 1j*gammaH], dtype=tf.complex64); # -1i
-    func = tf.add(gx*x*deltat, gy*y*deltat);
+def gradprecess(m, gradientX, gradientY, deltat, phase, gammaH, x, y):
+    gx = gradientX;
+    gy = gradientY;
+    comp = tf.constant([0 + 1j], dtype=tf.complex64); # 1i
+    func = tf.add(gx*x, gy*y);
     #exponential = tf.constant([func], dtype=tf.complex64, shape=(1,1));
     #f = tf.cast(func, dtype=tf.complex64);
     z = tf.multiply(comp, func);
     precess = tf.exp(z);
     precessLine = tf.reshape(precess, [64, 1])
     ez = tf.constant([[0], [0], [1]], dtype = tf.complex64)
-    mz = tf.matmul(m, ez)
+    mz = tf.matmul(m, ez)  #### INCORRECT not z magnetization TRANSVERSE MAGNETIZATION IS THE X Y CHOOSE ONE OR MAGNITUDE srt(MX^2+MY^2)
     #mz = tf.cast(mz, tf.complex64);
     msig = tf.reshape(tf.multiply(mz, precessLine), [8,8]); #check matrix dimensions for this portion
     return msig;
@@ -88,7 +100,7 @@ def signal(m, gradients, deltat, rfPhase, gammaH, x, y):
     svec = tf.reduce_sum(gradprecess(m, gradients, deltat, rfPhase, gammaH, x[tf.newaxis, :], y[: , tf.newaxis]));
     return svec;
 
-def forward(PD, T1, T2, alpha, gradients, deltat, x, y, xVec, yVec, rfPhase=m.pi): #Pd is a tensor, T1 and T2 are scalars for that image
+def forward(PD, T1, T2, alpha, gradientX, gradientY, deltat, x, y, xVec, yVec, rfPhase=0.0): #Pd is a tensor, T1 and T2 are scalars for that image
     ez = tf.constant([0, 0, 1], dtype=tf.complex64, shape=(1, 3))
     #s = tf.Variable(tf.zeros([Nrep, Nactions], dtype=tf.complex64));
     s = [];
@@ -106,8 +118,8 @@ def forward(PD, T1, T2, alpha, gradients, deltat, x, y, xVec, yVec, rfPhase=m.pi
             b = freeprecess(deltat[r,a], phase, df=10);
             m = tf.matmul(m, b); #64by3 times 3by3 = zrotated mag vectors
             #ms = gradprecess(m, gradients[r,a].numpy(), deltat[r,a].numpy(), rfPhase, gammaH, x, y) #64 by 1 vector transverse magnetiztion
-            sIndex = signal(m, gradients[r,a], deltat[r,a], phase, gammaH, xVec, yVec);
-            s.append(sIndex);
+            sIndex = signal(m, gradientX[r,a], gradientY[r,a], deltat[r,a], xVec, yVec);
+            s.append(tf.math.real(sIndex)); ## TAKE REAL COMPONENT OF SIGNAL TO RECONSTRUCT THE IMGE
     X = tf.stack(s);
     Y = tf.reshape(X, [8,8]);
     return Y;
@@ -127,12 +139,12 @@ def reconstruction(s):
 
 def cost(recon, PD):
     loss = tf.square(PD-recon);
-    cost = tf.reduce_mean(loss);
-    return cost;
+    cost = tf.reduce_sum(loss);
+    return cost; ## SUM OF THE SQUARES OF THE DIFFERENCES
 
 opt = tf.keras.optimizers.Adam(learning_rate=0.001);
-input = PD; #in the future used to make training batches
-epochs = 1000;
+input = PDNormalized; #in the future used to make training batches
+epochs = 10;
 mainLoss = 100000;
 def train(opt, input):
     with tf.GradientTape(persistent=True) as tape:
@@ -152,11 +164,20 @@ def train(opt, input):
         #result = signal(inputM, gradients[1,1], deltat[1,1], phase, gammaH, xVec, yVec);
         grads = tape.gradient(loss, vars)
         opt.apply_gradients(zip(grads, vars))
+    return rec, loss;
 
 #Change to make it in loss dependent
-print(mainLoss);
-while mainLoss > 0.1:
-    train(opt, input);
+l = [];
+for i in range(0, epochs):
+    resArr = train(opt, input);
+    plt.figure(1);
+    a = plt.imshow(tf.reshape(tf.math.abs(tf.math.real(input)), [8,8]));
+    plt.figure(2);
+    b = plt.imshow(tf.reshape(tf.math.abs(tf.math.real(resArr[0])), [8,8]));
+    plt.show()
+    l.append(resArr[1]);
+x = np.linspace(0, epochs, epochs+1)
+plt.plot(x, l)
 print(alpha)
 print(deltat)
 print(gradients)

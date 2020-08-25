@@ -13,7 +13,7 @@ class data:
 
         for i in range(0, numImages):
             for j in range(0, random.randint(minnumDots, maxnumDots)):
-                imgArr[random.randint(0, imgarrRow - 1)][random.randint(0, imgarrCol - 1)] = 1
+                imgArr[random.randint(0, imgarrRow - 1)][random.randint(0, imgarrCol - 1)] = random.randint(0, 250)
             plt.figure(i + 1)
             plt.imshow(imgArr)
             plt.gray()
@@ -21,5 +21,5 @@ class data:
             T1Value = round(random.uniform(0.3, 6.1), 2);
             T2Value = round(random.uniform(0, 3.8), 2);
             #plt.savefig(imgPath + str(datetime.date.today()) + "_" + str(i + 1) + '.jpg', bbox_inches='tight', dpi=imgDpi)
-            imgArr = imgArr+0.15;
+            imgArr = imgArr;
         return imgArr, T1Value, T2Value;
