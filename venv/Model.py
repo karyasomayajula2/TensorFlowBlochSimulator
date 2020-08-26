@@ -6,25 +6,19 @@ import math as m
 import matplotlib.pyplot as plt
 
 #Preprocess Data
-inputData = d.data.imgCreator(0, 8, 8, 40, 50, 1);
-Nrep = inputData[0].shape[0];
-Nactions = inputData[0].shape[1];
-PDArray = inputData[0].flatten();
-PD = tf.constant(PDArray, dtype=tf.complex64, shape=(64, 1));
-PDNormalized = PD/250;
-T1 = inputData[1];
-T2 = inputData[2];
-xVec = tf.cast(tf.linspace(1, 8, 8), tf.complex64);
-yVec = tf.cast(tf.linspace(1, 8, 8), tf.complex64);
+inputData = d.data.getSheppLogan(0);
+Nrep = 64;
+Nactions = 64;
+PDArray = inputData;
+PD = tf.constant(PDArray, dtype=tf.complex64, shape=(Nrep, Nactions));
+PDvec = tf.reshape(PD, [Nrep*Nactions, 1]);
+#PDNormalized = PD/250;
+T1 = 1.0; #constant for now
+T2 = 3.0; #constant for now
+xVec = tf.cast(tf.linspace(1, 64, 64), tf.complex64);
+yVec = tf.cast(tf.linspace(1, 64, 64), tf.complex64);
 alpha = tf.Variable(tf.zeros([Nrep, Nactions],  dtype= tf.complex64));
-deltat = tf.Variable([[1.+0.j, 10.+0.j, 5.+0.j, 2.+0.j, 3.+0.j, 0.+0.j, 2.+0.j, 5.+0.j],
-       [1.+0.j, 5.+0.j, 8.+0.j, 6.+0.j, 4.+0.j, 3.+0.j, 2.+0.j, 10.+0.j],
-       [10.+0.j, 9.+0.j, 2.+0.j, 7.+0.j, 5.+0.j, 4.+0.j, 3.+0.j, 2.+0.j],
-       [5.+0.j, 4.+0.j, 3.+0.j, 1.+0.j, 7.+0.j, 3.+0.j, 1.+0.j, 4.+0.j],
-       [2.+0.j, 7.+0.j, 3.+0.j, 1.+0.j, 5.+0.j, 1.+0.j, 6.+0.j, 4.+0.j],
-       [7.+0.j, 8.+0.j, 6.+0.j, 9.+0.j, 3.+0.j, 1.+0.j, 2.+0.j, 5.+0.j],
-       [2.+0.j, 7.+0.j, 9.+0.j, 10.+0.j, 3.+0.j, 4.+0.j, 5.+0.j, 1.+0.j],
-       [1.+0.j, 3.+0.j, 5.+0.j, 6.+0.j, 6.+0.j, 2.+0.j, 10.+0.j, 8.+0.j]], dtype = tf.complex64);
+deltat = tf.Variable(tf.ones([Nrep, Nactions], dtype = tf.complex64));
 gradientX = tf.Variable(tf.zeros([Nrep, Nactions],  dtype= tf.complex64));
 gradientY = tf.Variable(tf.zeros([Nrep, Nactions],  dtype= tf.complex64));
 
@@ -88,7 +82,7 @@ def gradprecess(m, gradientX, gradientY, deltat, x, y):
     #f = tf.cast(func, dtype=tf.complex64);
     z = tf.multiply(comp, func);
     precess = tf.exp(z);
-    precessLine = tf.reshape(precess, [64, 1])
+    precessLine = tf.reshape(precess, [Nrep*Nactions, 1])
     ex = tf.constant([[1], [0], [0]], dtype = tf.complex64)
     ey = tf.constant([[0], [1], [0]], dtype = tf.complex64)
     mx = tf.matmul(m, ex);  #### INCORRECT not z magnetization TRANSVERSE MAGNETIZATION IS THE X Y CHOOSE ONE OR MAGNITUDE srt(MX^2+MY^2)
@@ -97,7 +91,7 @@ def gradprecess(m, gradientX, gradientY, deltat, x, y):
     my2 = tf.multiply(my, my);
     mtransverse = tf.sqrt(tf.add(mx2, my2));
     #mz = tf.cast(mz, tf.complex64);
-    msig = tf.reshape(tf.multiply(mtransverse, precessLine), [8,8]); #check matrix dimensions for this portion
+    msig = tf.reshape(tf.multiply(mtransverse, precessLine), [Nrep, Nactions]); #check matrix dimensions for this portion
     return msig;
 
 def signal(m, gradientX, gradientY, deltat, x, y):
@@ -126,7 +120,7 @@ def forward(PD, T1, T2, alpha, gradientX, gradientY, deltat, x, y, xVec, yVec, r
             sIndex = signal(m, gradientX[r,a], gradientY[r,a], deltat[r,a], xVec, yVec);
             s.append(sIndex); ## TAKE REAL COMPONENT OF SIGNAL TO RECONSTRUCT THE IMGE
     X = tf.stack(s);
-    Y = tf.reshape(X, [8,8]);
+    Y = tf.reshape(X, [x,y]);
     return Y;
 
 
@@ -139,20 +133,21 @@ def reconstruction(s):
     recon = tf.math.real(rec);
     #recon = tf.math.real(rec)+tf.math.imag(rec); #use abs or real
     #recon = tf.cast(recon, tf.float64);
-    recon1 = tf.reshape(recon, [64,1]);
+    recon1 = tf.reshape(recon, [Nrep*Nactions,1]);
     return recon1;
 
 
 def cost(recon, PD):
-    loss = tf.square(tf.math.real(PD)-recon);
-    cost = tf.reduce_sum(loss);
+    loss = tf.square(tf.reshape(tf.math.real(PD), [Nrep*Nactions, 1]) - recon);
+    lossNorm = loss/tf.reduce_max(loss);
+    cost = tf.reduce_sum(lossNorm);
     return cost; ## SUM OF THE SQUARES OF THE DIFFERENCES
 
 opt = tf.keras.optimizers.Adam(learning_rate=0.001);
-input = PDNormalized; #in the future used to make training batches
-targetContrast = PD;
+input = PDvec; #vector 4096 by 1
+targetContrast = PD; #64 by 64
 epochs = 10;
-mainLoss = 100000;
+#mainLoss = 100000;
 def train(opt, input, targetContrast):
     with tf.GradientTape(persistent=True) as tape:
         vars = [alpha, deltat, gradientX, gradientY]; #gradients, deltat];
@@ -161,9 +156,7 @@ def train(opt, input, targetContrast):
         #groundTruthSigMatrix = tf.ones([8, 8], dtype=tf.complex64);
         result = forward(input, T1, T2, alpha, gradientX, gradientY, deltat, Nrep, Nactions, xVec, yVec);
         rec = tf.math.abs(reconstruction(result));
-        reconstructed = rec*250;
-        loss = cost(reconstructed, targetContrast);
-        mainLoss = loss;
+        loss = cost(rec, targetContrast);
         #loss_fn = cost(result, input);
         #phase = tf.constant(m.pi, dtype=tf.complex64)
         #groundTruthSignal = tf.constant([1.5], dtype=tf.complex64);
@@ -172,16 +165,17 @@ def train(opt, input, targetContrast):
         #result = signal(inputM, gradients[1,1], deltat[1,1], phase, gammaH, xVec, yVec);
         grads = tape.gradient(loss, vars)
         opt.apply_gradients(zip(grads, vars))
-    return reconstructed, loss;
+    return rec, loss;
 
 #Change to make it in loss dependent
 l = [];
 for i in range(0, epochs):
     resArr = train(opt, input, targetContrast);
     plt.figure(1);
-    a = plt.imshow(tf.reshape(tf.math.abs(tf.math.real(targetContrast)), [8,8]));
+    a = plt.imshow(tf.reshape(tf.math.abs(tf.math.real(targetContrast)), [Nrep ,Nactions]));
     plt.figure(2);
-    b = plt.imshow(tf.reshape(tf.math.abs(tf.math.real(resArr[0])), [8,8]));
+    b = plt.imshow(tf.reshape(tf.math.abs(tf.math.real(resArr[0])), [Nrep, Nactions]));
+    plt.gray()
     plt.show()
     l.append(resArr[1]);
 x = np.linspace(0, epochs, epochs+1)
