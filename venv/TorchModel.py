@@ -3,7 +3,6 @@ import numpy as np
 import data as d
 import torch
 import math
-
 # Preprocess Data
 inputData = d.data.imgCreator(0, 8, 8, 10, 25, 1);
 Nrep = inputData[0].shape[0];
@@ -15,12 +14,13 @@ T1 = inputData[1];
 T2 = inputData[2];
 xVec = torch.linspace(1, 8, 8);
 yVec = torch.linspace(1, 8, 8);
-alpha = torch.autograd.Variable(torch.ones(Nrep, Nactions), requires_grad=True)  # , torch.double));
-deltat = torch.autograd.Variable(torch.rand(Nrep, Nactions), requires_grad=True)  # , torch.double));
-gradients = torch.autograd.Variable(torch.rand(Nrep, Nactions), requires_grad=True)  # , torch.double));
+alpha = torch.tensor(torch.zeros(Nrep, Nactions), requires_grad=True)  # , torch.double));
+deltat = torch.tensor(torch.rand(Nrep, Nactions), requires_grad=True)  # , torch.double));
+gx = torch.tensor(torch.zeros(Nrep, Nactions), requires_grad=True)  # , torch.double));
+gy = torch.tensor(torch.zeros(Nrep, Nactions), requires_grad=True)  # , torch.double));
 
 # Bloch Simulator Functions
-gammaH = 42.575 * (2 * np.pi)
+#gammaH = 42.575 * (2 * np.pi)
 
 
 def xrot(phi):
@@ -70,24 +70,39 @@ def freeprecess(deltat, df):  # for us relax does what freeprecess should do exc
     # Bfp = tf.constant([[0], [0], [1 - E1]], dtype=tf.float64)
     return b;
 
+def complexfix(temp): #delete
+    c = torch.zeros(64, 2);
+    for i in range(0, 63):
+        if i % 2 ==0 & i % 4 != 0:
+            c[i, 0] = -temp[i];
+        elif i%4 == 0:
+            c[i, 0] = temp[i]
+        elif i % 3 == 0:
+            c[i, 1] = -temp[i]
+        else:
+            c[i, 1] = temp[i]
+    return c
 
-def gradprecess(m, gradient, deltat, rfPhase, gammaH, x, y):
-    gradient = torch.tensor(gradient)
-    gx = gradient * torch.cos(rfPhase);
-    gy = gradient * torch.sin(rfPhase);
-    comp = torch.as_tensor([0 - 1j * gammaH], dtype=torch.complex64);  # -1i
-    func = gx * x * deltat + gy * y * deltat;
+def gradprecess(m, gx, gy, deltat, rfPhase, x, y):
+    #gx = gradient * torch.cos(rfPhase);
+    #gy = gradient * torch.sin(rfPhase);
+    comp = torch.as_tensor([0 - 1j], dtype=torch.complex64);  # -1i
+    #func = gx * x * deltat + gy * y * deltat; #this is not necessary since we aren't using gradient moments, rather we are using an overall gradient input
+    func = gx * x + gy * y
     #    exponential = torch.tensor([func], dtype=torch.complex64);
     #    exponential = torch.reshape(exponential, shape=(1, 1))
-    z = torch.mul(comp, func);
-    precess = torch.exp(z);
+    mx = m[:, 0]
+    my = m[:, 1]
+    mxy = torch.sqrt(torch.square(mx)+torch.square(my));
+    temp = torch.mul(comp, func);
+    precess = torch.exp(temp);
     precessLine = torch.reshape(precess, (64, 1))
     # precess = torch.complex64(precess);
     # torch.tensor(torch.exp(torch.index_select(z, 0, 0))#, dtype=torch.complex64)
-    ez = torch.tensor([[0], [0], [1]], dtype=torch.float64);
-    mz = torch.matmul(m, ez);
-    mz = mz.type(torch.complex64);
-    msig = torch.mul(mz, precessLine)
+    #ez = torch.tensor([[0], [0], [1]], dtype=torch.float64);
+    #mz = torch.matmul(m, ez);
+    #mz = mz.type(torch.complex64);
+    msig = torch.mul(mxy, precessLine)
     # msig = torch.mm(mz, precess);  # check matrix dimensions for this portion L1 norm
     # mmcombined = mz.real + mz.imag;
     # precessLinec = precessLine.real + precessLine.imag;
@@ -95,16 +110,16 @@ def gradprecess(m, gradient, deltat, rfPhase, gammaH, x, y):
     return msig;
 
 
-def signal(m, gradients, deltat, rfPhase, gammaH, x, y):
+def signal(m, gx, gy, deltat, rfPhase, x, y):
     x = x.reshape(1, 8)
     y = y.reshape(8, 1)
     # svec = torch.sum(m((x, y)));
-    svec = torch.sum(gradprecess(m, gradients, deltat, rfPhase, gammaH, x, y));
+    svec = torch.sum(gradprecess(m, gx, gy, deltat, rfPhase, x, y));
     return svec;
 
 
-def forward(PD, T1, T2, alpha, gradients, deltat, x, y, xVec, yVec,
-            rfPhase=torch.tensor(math.pi)):  # Pd is a tensor,PD T1 and T2 are scalars for that image
+def forward(PD, T1, T2, alpha, gx, gy, deltat, x, y, xVec, yVec, rfPhase=torch.tensor(0, dtype=torch.float64)):
+            #rfPhase=torch.tensor(math.pi)):  # Pd is a tensor,PD T1 and T2 are scalars for that image
     ez = torch.tensor([0, 0, 1], dtype=torch.float64)
     # print(torch.is_tensor(ez))
     s = torch.zeros(Nrep, Nactions, dtype=torch.complex64)  # dtype=complex)
@@ -122,15 +137,16 @@ def forward(PD, T1, T2, alpha, gradients, deltat, x, y, xVec, yVec,
             # ms = gradprecess(m, gradients[r, a], deltat[r, a], rfPhase, gammaH, x,
             # y)  # 64 by 1 vector transverse magnetiztion
             # s[r, a] = signal(ms, xVec, yVec);
-            s[r, a] = signal(m, gradients[r, a], deltat[r, a], rfPhase, gammaH, xVec, yVec);
+            s[r, a] = signal(m, gx[r, a], gy[r, a], deltat[r, a], rfPhase, xVec, yVec);
     return s;
 
 
 def reconstruction(s):
     ss = torch.stack([s.real, s.imag], 2)
     rec = torch.ifft(ss, 2)
-    recon = torch.reshape(rec, [64, 2])
-    recon = recon.sum(1)
+    recon = rec[:, :, 1]
+    recon = torch.reshape(recon, [64, 1])
+    #recon = recon.sum(1)
     # recon = torch.reshape(recon,[8,8]) reshape for if you want like an image, if not just leave as 64 x 1 for loss calc
     # reci = torch.imag(recon[:, 1])
     # recr = torch.tensor(recon[:, 0], dtype=torch.complex64)
@@ -140,11 +156,11 @@ def reconstruction(s):
 
 def cost(recon, PD):
     loss = torch.square(PD - recon);
-    cost = torch.mean(loss);
+    cost = torch.view_as_complex(torch.mean(loss));
     return cost
 
 
-vars = [alpha, deltat, gradients]
+vars = [alpha, deltat, gx, gy]
 opt = torch.optim.Adam(vars, lr=.001)
 input = PD;
 epochs = 1000;
@@ -154,12 +170,11 @@ mainLoss = 100000;
 def train(opt, input):
     # torch.autograd:
     #vars.requires_grad_(True)
-    result = forward(input, T1, T2, alpha, gradients, deltat, Nrep, Nactions, xVec, yVec);
+    result = forward(input, T1, T2, alpha, gx, gy, deltat, Nrep, Nactions, xVec, yVec);
     rec = reconstruction(result);
     loss = cost(rec, input);
-    loss.requires_grad(True)
     mainloss = loss
-    grads = loss.backward()
+    grads = loss.backward(loss, retain_graph=True)
     vars.optimizer.step()
     return mainloss
 
@@ -170,10 +185,11 @@ while mainLoss > 0.1:
     train(opt, input);
 print(alpha)
 print(deltat)
-print(gradients)
+print(gx)
+print(gy)
 # msig = gradprecess([0,0,1],10,deltat,torch.tensor(10),torch.tensor(10),1,1)
 # print(msig)
-# s = forward(PD, T1, T2, alpha, gradients, deltat, Nrep, Nactions, xVec, yVec);
+# s = forward(PD, T1, T2, alpha, gx, gy, deltat, Nrep, Nactions, xVec, yVec);
 # print(s);
 # recon = reconstruction(s)
 # print(recon)
