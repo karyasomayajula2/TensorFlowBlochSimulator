@@ -7,16 +7,18 @@ import matplotlib.pyplot as plt
 
 #Preprocess Data
 inputData = d.data.getSheppLogan(0);
-Nrep = 64;
-Nactions = 64;
+Nrep = 32;
+Nactions = 32;
 PDArray = inputData;
 PD = tf.constant(PDArray, dtype=tf.complex64, shape=(Nrep, Nactions));
 PDvec = tf.reshape(PD, [Nrep*Nactions, 1]);
 #PDNormalized = PD/250;
-T1 = 1.0; #constant for now
-T2 = 3.0; #constant for now
-xVec = tf.cast(tf.linspace(1, 64, 64), tf.complex64);
-yVec = tf.cast(tf.linspace(1, 64, 64), tf.complex64);
+T1 = 100.0; #constant for now
+T2 = 20.0; #constant for now
+
+xVec = tf.cast(tf.linspace(1, 32, 32), tf.complex64);
+yVec = tf.cast(tf.linspace(1, 32, 32), tf.complex64);
+
 alpha = tf.Variable(tf.zeros([Nrep, Nactions],  dtype= tf.complex64));
 deltat = tf.Variable(tf.ones([Nrep, Nactions], dtype = tf.complex64));
 gradientX = tf.Variable(tf.zeros([Nrep, Nactions],  dtype= tf.complex64));
@@ -65,7 +67,7 @@ def relax(deltat, T1, T2):
     return rel;
 
 def freeprecess(deltat, phase, df):  # for us relax does what freeprecess should do except the zrotation
-    phi = 2 * (phase) * df * deltat / 1000;
+    phi = 2 * (phase) * df * deltat / 1000; ##larmor freq times delta t
     # E1 = np.exp(-deltat / T1);
     # E2 = np.exp(-deltat / T2);
     b = zrot(phi);
@@ -73,7 +75,7 @@ def freeprecess(deltat, phase, df):  # for us relax does what freeprecess should
     # Bfp = tf.constant([[0], [0], [1 - E1]], dtype=tf.float64)
     return b;
 
-def gradprecess(m, gradientX, gradientY, deltat, x, y):
+def gradprecess(m, gradientX, gradientY, x, y):
     gx = gradientX;
     gy = gradientY;
     comp = tf.constant([0 + 1j], dtype=tf.complex64); # 1i
@@ -85,18 +87,19 @@ def gradprecess(m, gradientX, gradientY, deltat, x, y):
     precessLine = tf.reshape(precess, [Nrep*Nactions, 1])
     ex = tf.constant([[1], [0], [0]], dtype = tf.complex64)
     ey = tf.constant([[0], [1], [0]], dtype = tf.complex64)
-    mx = tf.matmul(m, ex);  #### INCORRECT not z magnetization TRANSVERSE MAGNETIZATION IS THE X Y CHOOSE ONE OR MAGNITUDE srt(MX^2+MY^2)
-    my = tf.matmul(m, ey);
-    mx2 = tf.multiply(mx, mx);
-    my2 = tf.multiply(my, my);
-    mtransverse = tf.sqrt(tf.add(mx2, my2));
+    #mx = tf.matmul(m, ex);  #### INCORRECT not z magnetization TRANSVERSE MAGNETIZATION IS THE X Y CHOOSE ONE OR MAGNITUDE srt(MX^2+MY^2)
+    #my = tf.matmul(m, ey);
+    #mx2 = tf.multiply(mx, mx);
+    #my2 = tf.multiply(my, my);
+    #mtransverse = tf.sqrt(tf.add(mx2, my2)); # sqrt could not be implemented
+    mtransverse = tf.matmul(m, ex); #this works for gradients
     #mz = tf.cast(mz, tf.complex64);
     msig = tf.reshape(tf.multiply(mtransverse, precessLine), [Nrep, Nactions]); #check matrix dimensions for this portion
     return msig;
 
-def signal(m, gradientX, gradientY, deltat, x, y):
+def signal(m, gradientX, gradientY, x, y):
     #x[tf.newaxis, :], y[: , tf.newaxis]]
-    svec = tf.reduce_sum(gradprecess(m, gradientX, gradientY, deltat, x[tf.newaxis, :], y[: , tf.newaxis]));
+    svec = tf.reduce_sum(gradprecess(m, gradientX, gradientY, x[tf.newaxis, :], y[: , tf.newaxis]));
     return svec;
 
 def forward(PD, T1, T2, alpha, gradientX, gradientY, deltat, x, y, xVec, yVec, rfPhase=0.0): #Pd is a tensor, T1 and T2 are scalars for that image
@@ -111,58 +114,75 @@ def forward(PD, T1, T2, alpha, gradientX, gradientY, deltat, x, y, xVec, yVec, r
     for r in range(0, Nrep):
         for a in range(0, Nactions):
             flip = throt(alpha[r,a], phase); #no .numpy() anywhere
-            m = tf.matmul(m, flip) # 64by3 times 3by3 = 64by3y
+            m = tf.matmul(m, flip) # 64by3 times 3by3 = 64by3
             rel = relax(deltat[r,a], t1, t2);
             m = tf.add(tf.matmul(m, rel), tf.matmul(m0, 1-rel)); # 64by3 times 3by3 + 64by3 original time 3by3 = 64by3
-            b = freeprecess(deltat[r,a], phase, df=10);
-            m = tf.matmul(m, b); #64by3 times 3by3 = zrotated mag vectors
+            #b = freeprecess(deltat[r,a]);  ## larmor frequency times deltat t
+            #m = tf.matmul(m, b); #64by3 times 3by3 = zrotated mag vectors
             #ms = gradprecess(m, gradients[r,a].numpy(), deltat[r,a].numpy(), rfPhase, gammaH, x, y) #64 by 1 vector transverse magnetiztion
-            sIndex = signal(m, gradientX[r,a], gradientY[r,a], deltat[r,a], xVec, yVec);
+            sIndex = signal(m, gradientX[r,a], gradientY[r,a], xVec, yVec);
             s.append(sIndex); ## TAKE REAL COMPONENT OF SIGNAL TO RECONSTRUCT THE IMGE
     X = tf.stack(s);
     Y = tf.reshape(X, [x,y]);
     return Y;
 
 
-
-#s = forward(PD, T1, T2, alpha, gradients, deltat, Nrep, Nactions, xVec, yVec);
-#print(s);
-
 def reconstruction(s):
     rec = tf.signal.ifft2d(s);
-    recon = tf.math.real(rec);
+    #recon = tf.math.real(rec);
     #recon = tf.math.real(rec)+tf.math.imag(rec); #use abs or real
     #recon = tf.cast(recon, tf.float64);
-    recon1 = tf.reshape(recon, [Nrep*Nactions,1]);
+    recon1 = tf.reshape(rec, [Nrep*Nactions,1]);
     return recon1;
 
 
 def cost(recon, PD):
-    loss = tf.square(tf.reshape(tf.math.real(PD), [Nrep*Nactions, 1]) - recon);
-    lossNorm = loss/tf.reduce_max(loss);
-    cost = tf.reduce_sum(lossNorm);
+    #lossNorm = loss/tf.reduce_max(loss);
+    cost = tf.reduce_sum(tf.square(PD - recon));
     return cost; ## SUM OF THE SQUARES OF THE DIFFERENCES
 
-opt = tf.keras.optimizers.Adam(learning_rate=0.001);
+opt = tf.keras.optimizers.Adam(learning_rate=0.01);
 input = PDvec; #vector 4096 by 1
-targetContrast = PD; #64 by 64
+targetContrast = PDvec; #64 by 64
 epochs = 10;
 #mainLoss = 100000;
 def train(opt, input, targetContrast):
-    with tf.GradientTape(persistent=True) as tape:
-        vars = [alpha, deltat, gradientX, gradientY]; #gradients, deltat];
+    with tf.GradientTape() as tape:
+        vars = [alpha, deltat]; #gradients, deltat];
         tape.watch(vars);
-        #print(tape.watched_variables());
-        #groundTruthSigMatrix = tf.ones([8, 8], dtype=tf.complex64);
-        result = forward(input, T1, T2, alpha, gradientX, gradientY, deltat, Nrep, Nactions, xVec, yVec);
-        rec = tf.math.abs(reconstruction(result));
-        loss = cost(rec, targetContrast);
-        #loss_fn = cost(result, input);
-        #phase = tf.constant(m.pi, dtype=tf.complex64)
-        #groundTruthSignal = tf.constant([1.5], dtype=tf.complex64);
+        ##Proof that alpha gradients compute by themselves and deltat shouldnt be nan
+        ##commented out here
+        #mGroundTruth = tf.constant([1,1,1], dtype = tf.complex64);
+        #t1 = tf.constant(T1, dtype=tf.complex64)
+        #t2 = tf.constant(T2, dtype=tf.complex64)
         #ez = tf.constant([0, 0, 1], dtype=tf.complex64, shape=(1, 3))
-        #inputM = tf.matmul(input, ez);
-        #result = signal(inputM, gradients[1,1], deltat[1,1], phase, gammaH, xVec, yVec);
+        #m0 = tf.matmul(input, ez);
+        #m00 = tf.reshape(m0[500], (1, 3));
+        #m = tf.reshape(m0[500], (1, 3));
+        #phase = tf.constant(0.0, dtype=tf.complex64)
+        #flip = throt(alpha[0, 0], phase);
+        #print(m);
+        #m = tf.matmul(m, flip)
+        #print(m);
+        #rel = relax(deltat[0, 0], t1, t2);
+        #m = tf.add(tf.matmul(m, rel), tf.matmul(m00, 1 - rel));  # 64by3 times 3by3 + 64by3 original time 3by3 = 64by3
+        #print(m)
+        #b = freeprecess(deltat[0, 0], phase, df=10);
+        #m = tf.matmul(m, b);
+        #print(m)
+        #loss = tf.reduce_sum(tf.square(mGroundTruth - m));
+
+        result = forward(input, T1, T2, alpha, gradientX, gradientY, deltat, Nrep, Nactions, xVec, yVec);
+        groundTruthSignal = tf.ones([Nrep*Nactions, 1], dtype = tf.complex64)
+        ##Can be computed in the loop and have non nan values
+        #mGroundTruth = tf.zeros([Nrep*Nactions, 3], dtype = tf.complex64);
+        #loss = tf.reduce_sum(tf.square(mGroundTruth - result));
+
+        #rec = reconstruction(tf.reshape(result);
+        #groundSigRec = reconstruction(groundTruthSignal);
+        loss = tf.reduce_sum(tf.square(groundTruthSignal - result));
+        #loss = cost(rec, targetContrast);
+
         grads = tape.gradient(loss, vars)
         opt.apply_gradients(zip(grads, vars))
     return rec, loss;
@@ -172,13 +192,13 @@ l = [];
 for i in range(0, epochs):
     resArr = train(opt, input, targetContrast);
     plt.figure(1);
-    a = plt.imshow(tf.reshape(tf.math.abs(tf.math.real(targetContrast)), [Nrep ,Nactions]));
+    a = plt.imshow(tf.reshape(tf.math.abs(tf.math.real(targetContrast)), [Nrep ,Nactions]), clim = [0,1]);
     plt.figure(2);
-    b = plt.imshow(tf.reshape(tf.math.abs(tf.math.real(resArr[0])), [Nrep, Nactions]));
+    b = plt.imshow(tf.reshape(tf.math.abs(tf.math.real(resArr[0])), [Nrep, Nactions]), clim=[0, 1]);
     plt.gray()
     plt.show()
     l.append(resArr[1]);
-x = np.linspace(0, epochs, epochs+1)
+x = np.linspace(1, epochs, epochs+1)
 plt.plot(x, l)
 print(alpha)
 print(deltat)

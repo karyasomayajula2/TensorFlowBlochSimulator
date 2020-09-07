@@ -9,7 +9,7 @@ imgPath = 'C:/Users/aryas/PycharmProjects/MRZero/venv/testImages'
 
 class data:
     def getSheppLogan(self):
-        M0, T1, T2 = shepp_logan((64, 64, 1), MR=True, zlims=(-.25, .25));
+        M0, T1, T2 = shepp_logan((32, 32, 1), MR=True, zlims=(-.25, .25));
         return M0;
 
     def imgCreator(self, imgarrRow, imgarrCol, minnumDots, maxnumDots, numImages):
