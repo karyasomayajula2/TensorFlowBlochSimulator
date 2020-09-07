@@ -20,10 +20,11 @@ xVec.type(torch.complex64);
 yVec.type(torch.complex64);
 alpha = torch.zeros(Nrep, Nactions, requires_grad=True)  # , torch.double));
 deltat = torch.ones(Nrep, Nactions, requires_grad=True)  # , torch.double));
-gx = torch.zeros(Nrep, Nactions, requires_grad=True)  # , torch.double));#torch.linspace(0, 1000, Nrep*Nactions)
-gy = torch.zeros(Nrep, Nactions, requires_grad=True)  # , torch.double));#torch.linspace(0, 1000, Nrep*Nactions)#
+gx = torch.linspace(0, 10, Nrep*Nactions) #torch.zeros(Nrep, Nactions, requires_grad=True)
+gy = torch.linspace(0, 10, Nrep*Nactions)#torch.zeros(Nrep, Nactions, requires_grad=True)  # , torch.double));
 gx = torch.reshape(gx, (Nrep, Nactions));
 gy = torch.reshape(gy, (Nrep, Nactions));
+
 # Bloch Simulator Functions
 gammaH = 42.575 * (2 * np.pi)
 
@@ -133,7 +134,13 @@ def forward(PD, T1, T2, alpha, gx, gy, deltat, x, y, xVec, yVec, rfPhase=0.0):
             # ms = gradprecess(m, gradients[r, a], deltat[r, a], rfPhase, gammaH, x,
             # y)  # 64 by 1 vector transverse magnetiztion
             # s[r, a] = signal(ms, xVec, yVec);
-            s[r, a] = signal(m, gx[r, a], gy[r, a], deltat[r, a], rfPhase, xVec, yVec);
+            kx = gx[r, a].item();
+            kx = int(kx)
+#            kx = kx.data()[0]
+            ky = gy[r, a].item();
+            ky = int(ky)
+#            ky = ky.data()[0]
+            s[kx, ky] = signal(m, gx[r, a], gy[r, a], deltat[r, a], rfPhase, xVec, yVec);
     return s;
 
 
