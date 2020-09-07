@@ -68,7 +68,7 @@ def relax(deltat, T1, T2):
 
 
 def freeprecess(deltat):  # for us relax does what freeprecess should do except the zrotation
-    phi = deltat*gammaH*1.5; #3 is also a common value
+    phi = deltat*gammaH*1.5; #3 is also a common value units for B0 are tesla
     # E1 = np.exp(-deltat / T1);
     # E2 = np.exp(-deltat / T2);
     b = zrot(phi);
