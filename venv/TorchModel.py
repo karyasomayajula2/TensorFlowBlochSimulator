@@ -6,26 +6,26 @@ import matplotlib.pyplot as plt
 import math
 # Preprocess Data
 inputData = d.data.getSheppLogan(0);#d.data.imgCreator(0, 8, 8, 10, 25, 1);
-Nrep = 64 #inputData[0].shape[0];
-Nactions = 64 #inputData[0].shape[1];
+Nrep = 32 #inputData[0].shape[0];
+Nactions = 32 #inputData[0].shape[1];
 PDArray = inputData#[0].flatten();
 PD = torch.as_tensor(PDArray, dtype=torch.float64);
 PD = torch.reshape(PD,(Nrep,Nactions))
 PDvec = torch.reshape(PD, [Nrep*Nactions, 1])
 T1 = 1.0 #inputData[1];
 T2 = 3.0 #inputData[2];
-xVec = torch.linspace(1, 64, 64);
-yVec = torch.linspace(1, 64, 64);
+xVec = torch.linspace(1, 32, 32);
+yVec = torch.linspace(1, 32, 32);
 xVec.type(torch.complex64);
 yVec.type(torch.complex64);
 alpha = torch.zeros(Nrep, Nactions, requires_grad=True)  # , torch.double));
 deltat = torch.ones(Nrep, Nactions, requires_grad=True)  # , torch.double));
 gx = torch.zeros(Nrep, Nactions, requires_grad=True)  # , torch.double));#torch.linspace(0, 1000, Nrep*Nactions)
-gy = torch.zeros(Nrep, Nactions, requires_grad=True)  # , torch.double));torch.linspace(0, 1000, Nrep*Nactions)#
+gy = torch.zeros(Nrep, Nactions, requires_grad=True)  # , torch.double));#torch.linspace(0, 1000, Nrep*Nactions)#
 gx = torch.reshape(gx, (Nrep, Nactions));
 gy = torch.reshape(gy, (Nrep, Nactions));
 # Bloch Simulator Functions
-#gammaH = 42.575 * (2 * np.pi)
+gammaH = 42.575 * (2 * np.pi)
 
 
 def xrot(phi):
@@ -66,8 +66,8 @@ def relax(deltat, T1, T2):
     return rel;
 
 
-def freeprecess(deltat, phase, df):  # for us relax does what freeprecess should do except the zrotation
-    phi = 2 * (phase) * df * deltat / 1000;
+def freeprecess(deltat):  # for us relax does what freeprecess should do except the zrotation
+    phi = deltat*gammaH*1.5; #3 is also a common value
     # E1 = np.exp(-deltat / T1);
     # E2 = np.exp(-deltat / T2);
     b = zrot(phi);
@@ -104,8 +104,8 @@ def gradprecess(m, gx, gy, deltat, rfPhase, x, y):
 
 def signal(m, gx, gy, deltat, rfPhase, x, y):
     # svec = torch.sum(m((x, y)));
-    x = torch.reshape(x, [1, 64]);
-    y = torch.reshape(y, [64, 1]);
+    x = torch.reshape(x, [1, 32]);
+    y = torch.reshape(y, [32, 1]);
     svec = torch.sum(gradprecess(m, gx, gy, deltat, rfPhase, x, y));
     return svec;
 
@@ -128,7 +128,7 @@ def forward(PD, T1, T2, alpha, gx, gy, deltat, x, y, xVec, yVec, rfPhase=0.0):
             rel = relax(deltat[r, a], T1, T2);
             m = torch.add(torch.matmul(m, rel),
                           torch.matmul(m0, 1 - rel));  # 64by3 times 3by3 + 64by3 original time 3by3 = 64by3
-            b = freeprecess(deltat[r, a], phase, df=10);
+            b = freeprecess(deltat[r, a])#,#);
             m = torch.matmul(m, b);  # 64by3 times 3by3 = zrotated mag vectors
             # ms = gradprecess(m, gradients[r, a], deltat[r, a], rfPhase, gammaH, x,
             # y)  # 64 by 1 vector transverse magnetiztion
