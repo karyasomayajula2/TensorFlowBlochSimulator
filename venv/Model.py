@@ -66,8 +66,11 @@ def relax(deltat, T1, T2):
     rel = tf.reshape(a, (3, 3));
     return rel;
 
-def freeprecess(deltat, phase, df):  # for us relax does what freeprecess should do except the zrotation
-    phi = 2 * (phase) * df * deltat / 1000; ##larmor freq times delta t
+def freeprecess(deltat):  # for us relax does what freeprecess should do except the zrotation
+    gammaH = 42.58 * 10**6; #gyromagnetic ratio/(2*pi) for 1H in Hz/T
+    B0 = 1.5; #T, main field B0 (full-body imaging systems usually 0.1T-1.5T
+    phi = gammaH * B0 * deltat*10**(-3); #radians, converted deltat to s. formula from http://mriquestions.com/what-is-flip-angle.html
+    #phi = 2 * (phase) * df * deltat / 1000; ##larmor freq times delta t
     # E1 = np.exp(-deltat / T1);
     # E2 = np.exp(-deltat / T2);
     b = zrot(phi);
