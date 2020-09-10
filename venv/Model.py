@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 
 #Preprocess Data
 inputData = d.data.getSheppLogan(0);
-Nrep = 32;
-Nactions = 32;
+Nrep = 8;
+Nactions = 8;
 PDArray = inputData;
 PD = tf.constant(PDArray, dtype=tf.complex64, shape=(Nrep, Nactions));
 PDvec = tf.reshape(PD, [Nrep*Nactions, 1]);
@@ -16,8 +16,8 @@ PDvec = tf.reshape(PD, [Nrep*Nactions, 1]);
 T1 = 100.0; #constant for now
 T2 = 20.0; #constant for now
 
-xVec = tf.cast(tf.linspace(1, 32, 32), tf.complex64);
-yVec = tf.cast(tf.linspace(1, 32, 32), tf.complex64);
+xVec = tf.cast(tf.linspace(1, 8, 8), tf.complex64);
+yVec = tf.cast(tf.linspace(1, 8, 8), tf.complex64);
 
 alpha = tf.Variable(tf.zeros([Nrep, Nactions],  dtype= tf.complex64));
 deltat = tf.Variable(tf.ones([Nrep, Nactions], dtype = tf.complex64));
@@ -108,7 +108,7 @@ def signal(m, gradientX, gradientY, x, y):
 def forward(PD, T1, T2, alpha, gradientX, gradientY, deltat, x, y, xVec, yVec, rfPhase=0.0): #Pd is a tensor, T1 and T2 are scalars for that image
     ez = tf.constant([0, 0, 1], dtype=tf.complex64, shape=(1, 3))
     #s = tf.Variable(tf.zeros([Nrep, Nactions], dtype=tf.complex64));
-    s = [];
+    s = [[0]*Nrep for i in range(Nactions)]
     m0 = tf.matmul(PD, ez); #if 8by8 image PD is a 64by1 matrix and m is now a 64by3: 64by1*1by3 = 64by3
     m = m0;
     t1 = tf.constant(T1, dtype = tf.complex64)
@@ -120,11 +120,22 @@ def forward(PD, T1, T2, alpha, gradientX, gradientY, deltat, x, y, xVec, yVec, r
             m = tf.matmul(m, flip) # 64by3 times 3by3 = 64by3
             rel = relax(deltat[r,a], t1, t2);
             m = tf.add(tf.matmul(m, rel), tf.matmul(m0, 1-rel)); # 64by3 times 3by3 + 64by3 original time 3by3 = 64by3
-            #b = freeprecess(deltat[r,a]);  ## larmor frequency times deltat t
-            #m = tf.matmul(m, b); #64by3 times 3by3 = zrotated mag vectors
-            #ms = gradprecess(m, gradients[r,a].numpy(), deltat[r,a].numpy(), rfPhase, gammaH, x, y) #64 by 1 vector transverse magnetiztion
+            b = freeprecess(deltat[r,a]);  ## larmor frequency times deltat t
+            m = tf.matmul(m, b); #64by3 times 3by3 = zrotated mag vectors
             sIndex = signal(m, gradientX[r,a], gradientY[r,a], xVec, yVec);
-            s.append(sIndex); ## TAKE REAL COMPONENT OF SIGNAL TO RECONSTRUCT THE IMGE
+            a1 = int(gradientX[r,a].numpy())
+            a2 = int(gradientY[r,a].numpy())
+            #code to fix boundary conditions
+            if a1 > Nrep:
+                a1 = Nrep
+            elif a1 < 0:
+                a1 = 0;
+            elif a2 > Nactions:
+                a2 = Nactions;
+            elif a2 < 0:
+                a2 = 0;
+
+            s[a1][a2] = sIndex; ## TAKE REAL COMPONENT OF SIGNAL TO RECONSTRUCT THE IMGE
     X = tf.stack(s);
     Y = tf.reshape(X, [x,y]);
     return Y;
@@ -151,7 +162,7 @@ epochs = 10;
 #mainLoss = 100000;
 def train(opt, input, targetContrast):
     with tf.GradientTape() as tape:
-        vars = [alpha, deltat]; #gradients, deltat];
+        vars = [alpha, deltat, gradientX, gradientY]; #gradients, deltat];
         tape.watch(vars);
         ##Proof that alpha gradients compute by themselves and deltat shouldnt be nan
         ##commented out here
@@ -176,15 +187,15 @@ def train(opt, input, targetContrast):
         #loss = tf.reduce_sum(tf.square(mGroundTruth - m));
 
         result = forward(input, T1, T2, alpha, gradientX, gradientY, deltat, Nrep, Nactions, xVec, yVec);
-        groundTruthSignal = tf.ones([Nrep*Nactions, 1], dtype = tf.complex64)
+        #groundTruthSignal = tf.ones([Nrep*Nactions, 1], dtype = tf.complex64)
         ##Can be computed in the loop and have non nan values
         #mGroundTruth = tf.zeros([Nrep*Nactions, 3], dtype = tf.complex64);
         #loss = tf.reduce_sum(tf.square(mGroundTruth - result));
 
-        #rec = reconstruction(tf.reshape(result);
+        rec = reconstruction(result);
         #groundSigRec = reconstruction(groundTruthSignal);
-        loss = tf.reduce_sum(tf.square(groundTruthSignal - result));
-        #loss = cost(rec, targetContrast);
+        #loss = tf.reduce_sum(tf.square(groundTruthSignal - result));
+        loss = cost(rec, targetContrast);
 
         grads = tape.gradient(loss, vars)
         opt.apply_gradients(zip(grads, vars))
