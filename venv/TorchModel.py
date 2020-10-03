@@ -12,8 +12,8 @@ PDArray = inputData#[0].flatten();
 PD = torch.as_tensor(PDArray, dtype=torch.float64);
 PD = torch.reshape(PD,(Nrep,Nactions))
 PDvec = torch.reshape(PD, [Nrep*Nactions, 1])
-T1 = 1.0 #inputData[1];
-T2 = 3.0 #inputData[2];
+T1 = 2.0 #inputData[1];
+T2 = 20.0 #inputData[2];
 xVec = torch.linspace(1, 32, 32);
 yVec = torch.linspace(1, 32, 32);
 xVec.type(torch.complex64);
@@ -26,7 +26,7 @@ gx = torch.reshape(gx, (Nrep, Nactions));
 gy = torch.reshape(gy, (Nrep, Nactions));
 
 # Bloch Simulator Functions
-gammaH = 42.575 * (2 * np.pi)
+gammaH = 42.575*(2 * np.pi)
 
 
 def xrot(phi):

@@ -1,16 +1,22 @@
 
 import numpy as np
 import random
+from numpy import asarray
+from PIL import Image
 import datetime
 import matplotlib.pyplot as plt
 from phantominator import shepp_logan
 #imgDpi = 16  # for 62 x 62 pixel image
 imgPath = 'C:/Users/aryas/PycharmProjects/MRZero/venv/testImages'
-
+image = Image.open('circles.PNG')
 class data:
     def getSheppLogan(self):
         M0, T1, T2 = shepp_logan((32, 32, 1), MR=True, zlims=(-.25, .25));
         return M0;
+
+    def imgCircles(self):
+        data = np.asarray(image);
+        return data;
 
     def imgCreator(self, imgarrRow, imgarrCol, minnumDots, maxnumDots, numImages):
         imgArr = np.zeros((imgarrRow, imgarrCol), dtype=int)
