@@ -5,9 +5,11 @@ import torch
 import matplotlib.pyplot as plt
 import math
 
-inputData = d.data.imgCircles(1);
+x = 1 + 1;
+inputData = d.data.imgCircles(1, 'circles.png');
 sumdata = np.sum(inputData, axis = 2);
 print(inputData);
 print(sumdata);
-plt.imshow(inputData);
+plt.imshow(sumdata);
+plt.gray();
 plt.show();
